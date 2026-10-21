@@ -29,7 +29,7 @@ Farmers in developing regions face significant losses due to undiagnosed crop di
 ### Our Solution
 Chinar Agro AI brings laboratory-grade agricultural intelligence directly to the farmer's device:
 
-- **🔬 Upload a leaf photo** → Get instant disease diagnosis with treatment recommendations across **52 disease classes** and **14 crop species**
+- **🔬 Upload a leaf photo** → Get instant disease diagnosis with treatment recommendations across **52 disease classes** and **16 crop species**
 - **🌾 Enter soil & weather data** → Receive AI-optimized crop recommendations from **22 crop types** with confidence scores
 - **📊 Select region & crop** → Get yield forecasts trained on **8.7 million historical records** covering **500+ crop types** worldwide
 - **🧪 Scan a pesticide label** → Run an 11-step AI authentication pipeline to detect counterfeit products
@@ -40,7 +40,7 @@ Chinar Agro AI brings laboratory-grade agricultural intelligence directly to the
 - **Farmers** — Get instant crop health diagnosis and personalized recommendations without needing an agronomist
 - **Agricultural Extension Officers** — Use the platform as a diagnostic aid in the field
 - **Researchers & Students** — Explore multi-model ensemble architectures, feature engineering, and AI-driven pipelines
-- **Agri-Tech Startups** — A production-ready reference architecture for agricultural AI systems
+- **Agri-Tech Startups** — A reference architecture for agricultural AI systems; production readiness depends on deployment, security, model validation, and storage configuration
 
 ---
 
@@ -48,7 +48,7 @@ Chinar Agro AI brings laboratory-grade agricultural intelligence directly to the
 
 ### 🔬 Disease Detection — 52 Classes, 3-Model Ensemble
 - **Tri-Model Ensemble**: EfficientNet-B0 + ResNet-50 + EfficientNet-B1 with weighted probability fusion
-- **52 disease classes** across **14 crop species** (Apple, Blueberry, Cassava, Cherry, Corn, Grape, Orange, Peach, Pepper, Potato, Rice, Soybean, Strawberry, Tomato)
+- **52 disease classes** across **14 crop species** (Apple, Blueberry, Cassava, Cherry, Corn, Grape, Orange, Peach, Pepper, Potato, Raspberry, Rice, Soybean, Squash, Strawberry, Tomato)
 - Grad-CAM heatmap visualization showing exactly where the model looks
 - Open-set detection: rejects out-of-distribution images as "Unknown Disease"
 - Severity assessment, risk evaluation, treatment recommendations (via Gemini AI)
@@ -144,7 +144,7 @@ ChinarAgroAi/
 │   └── scripts/               # Training scripts
 │
 ├── requirements.txt           # Python dependencies
-├── render.yaml                # Render.com deployment config
+├── Dockerfile                 # Container deployment config (add if not present)
 └── README.md
 ```
 
@@ -161,7 +161,7 @@ ChinarAgroAi/
 ### 1. Clone & Install Backend
 
 ```bash
-git clone https://github.com/Aatif-khan01/Chinar-Agro-Ai.git
+git clone https://github.com/Adeelariq/Chinar-Agro-Ai.git
 cd Chinar-Agro-Ai
 
 # Create virtual environment
@@ -224,7 +224,7 @@ The app will open at `http://localhost:3000`.
 
 ## 🌱 Supported Crops & Diseases
 
-### Disease Detection — 52 Classes across 14 Crops
+### Disease Detection — 52 Classes across 16 Crops
 
 | Crop | Diseases Detected | Total |
 |------|------------------|-------|
@@ -283,38 +283,37 @@ The system can recommend the optimal crop based on 7 soil and weather parameters
 
 ## 🌐 Deployment
 
-### Render.com (Backend API)
+### Backend API — Google Cloud Run
 
-The project includes a `render.yaml` for one-click deployment:
+The FastAPI backend can be deployed as a container on Google Cloud Run. Before deploying:
 
-```yaml
-services:
-  - type: web
-    name: chinar-agro-ai-api
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn -w 1 -k uvicorn.workers.UvicornWorker ai_api.api:app"
-    envVars:
-      - key: GEMINI_API_KEY
-        sync: false
+1. Confirm that every required model-weight file is available in the build context or fetched securely during startup.
+2. Confirm that the Python dependencies install successfully on the selected CPU architecture.
+3. Configure `GEMINI_API_KEY` as a Cloud Run environment variable or Secret Manager secret. Do not commit real keys to Git.
+4. Configure CORS to allow only the production frontend origin.
+5. Set the service's container port to the port supplied by Cloud Run (`PORT`, commonly `8080`).
+6. Test `/health` and each AI endpoint after deployment. Check memory usage during model loading and inference; choose a service memory allocation that fits the models.
+
+Cloud Run requires a Google Cloud billing account. Usage may incur charges if the free-tier allowances are exceeded, so configure budgets and alerts before public launch. See the [Cloud Run documentation](https://cloud.google.com/run/docs).
+
+### Frontend — Vercel or Netlify
+
+The frontend is a Create React App project. Set the frontend root directory to `frontend`, use `npm install` and `npm run build`, and publish the `build/` directory.
+
+Configure this build-time environment variable in the frontend hosting dashboard:
+
+```env
+REACT_APP_API_URL=https://YOUR-BACKEND-URL
 ```
 
-### Vercel / Netlify (Frontend)
-
-```bash
-cd frontend
-npm run build
-# Deploy the `build/` folder to Vercel, Netlify, or any static host
-```
+Replace the example value with the actual deployed backend URL, then trigger a fresh frontend deployment. Do not put server-side secrets in frontend environment variables.
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GEMINI_API_KEY` | ✅ | Google Gemini API key for AI features |
-| `REACT_APP_API_URL` | ❌ | Backend API URL (defaults to `http://localhost:8000`) |
-
----
+| `GEMINI_API_KEY` | For Gemini-powered features | Server-side Gemini API key; keep it secret |
+| `REACT_APP_API_URL` | Recommended for production | Base URL of the deployed FastAPI backend; otherwise the frontend may default to localhost |
 
 ## 📦 Tech Stack
 
