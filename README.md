@@ -8,7 +8,6 @@
 [![React](https://img.shields.io/badge/React-19.2+-61DAFB?logo=react&logoColor=black)](https://reactjs.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.3+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **A full-stack AI-powered precision agriculture system** that combines deep learning, classical ML, and Google Gemini to deliver real-time disease diagnosis, crop recommendations, yield forecasting, pesticide authentication, and AI-driven farm advisory — all through a premium, console-grade web interface.
 
