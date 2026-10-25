@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -6,7 +6,7 @@ import {
   UploadCloud, Leaf, Activity, AlertTriangle,
   ShieldCheck, ShieldAlert, ShieldX, Info, Bug,
   ThermometerSun, Eye, Layers, Image as ImageIcon, ChevronRight,
-  Zap, Heart, Microscope, Pill, Lightbulb, Trash2
+  Zap, Heart, Microscope, Pill, Lightbulb, Trash2, Sprout
 } from 'lucide-react';
 import { PageHeader, Button, Badge, ProgressBar, SectionHeader, Tilt, Card } from '../design-system/components';
 import { pageVariants, pageTransition, fadeInLeft, fadeInRight, slideUp, staggerContainer } from '../design-system/animations';
@@ -110,8 +110,25 @@ const Disease = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [rejection, setRejection] = useState(null);
+  const [supportedCrops, setSupportedCrops] = useState([]);
   const [imageView, setImageView] = useState('original');
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    const fetchSupportedCrops = async () => {
+      try {
+        const { data } = await axios.get(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/supported-crops`);
+        if (data?.supported_crops) {
+          setSupportedCrops(data.supported_crops);
+        }
+      } catch (e) {
+        // Fallback default list if backend offline
+        setSupportedCrops(['Apple', 'Corn', 'Grape', 'Potato', 'Rice', 'Tomato', 'Strawberry', 'Pepper']);
+      }
+    };
+    fetchSupportedCrops();
+  }, []);
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
@@ -120,6 +137,7 @@ const Disease = () => {
       setPreview(URL.createObjectURL(selected));
       setResult(null);
       setError(null);
+      setRejection(null);
       setImageView('original');
     }
   };
@@ -132,6 +150,7 @@ const Disease = () => {
       setPreview(URL.createObjectURL(selected));
       setResult(null);
       setError(null);
+      setRejection(null);
       setImageView('original');
     }
   };
@@ -140,6 +159,7 @@ const Disease = () => {
     if (!file) return;
     setLoading(true);
     setError(null);
+    setRejection(null);
     setResult(null);
     const formData = new FormData();
     formData.append('file', file);
@@ -149,9 +169,16 @@ const Disease = () => {
         timeout: 30000,
       });
       setResult(data);
+      setRejection(null);
       setImageView('original');
     } catch (err) {
-      setError(err.response?.data?.detail?.message || err.response?.data?.error || err.message || 'Analysis failure.');
+      if (err.response?.status === 422 && err.response?.data?.error === 'not_a_plant') {
+        setRejection(err.response.data);
+        setError(null);
+      } else {
+        setRejection(null);
+        setError(err.response?.data?.detail?.message || err.response?.data?.error || err.message || 'Analysis failure.');
+      }
     } finally {
       setLoading(false);
     }
@@ -162,6 +189,7 @@ const Disease = () => {
     setPreview(null);
     setResult(null);
     setError(null);
+    setRejection(null);
     setImageView('original');
   };
 
@@ -311,20 +339,102 @@ const Disease = () => {
             >
               Run Diagnostic
             </Button>
-            {result && (
+            {(result || rejection) && (
               <Button variant="secondary" size="lg" onClick={handleReset}>
                 Reset Specimen
               </Button>
             )}
           </div>
+
+          {/* Supported Crops List */}
+          {supportedCrops.length > 0 && (
+            <div className="p-4 rounded-xl bg-surface-850/80 border border-white/[0.04]">
+              <div className="flex items-center gap-2 mb-2">
+                <Sprout className="w-3.5 h-3.5 text-brand-400" />
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-white/50">
+                  {t('disease_supported_crops_title', 'Supported Crops')} ({supportedCrops.length})
+                </span>
+              </div>
+              <p className="text-caption text-white/30 mb-3 text-[11px] leading-relaxed">
+                {t('disease_supported_crops_desc', 'Trained diagnostic vision covers these crop varieties:')}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {supportedCrops.map((crop, i) => (
+                  <span
+                    key={i}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-mono bg-white/[0.02] text-white/70 border border-white/[0.05] hover:border-brand-500/30 hover:text-white transition-colors"
+                  >
+                    {crop}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* RIGHT COLUMN: Diagnostic findings */}
         <motion.div {...fadeInRight} className="lg:col-span-7 space-y-6">
           <AnimatePresence mode="wait">
             
+            {/* Calm Input Validation Gate Rejection (422 not_a_plant) */}
+            {rejection && !loading && (
+              <motion.div
+                key="rejection"
+                {...slideUp}
+                className="p-6 rounded-xl bg-surface-800/80 border border-amber-500/30 flex flex-col gap-5 shadow-2xl backdrop-blur-md"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
+                    <Leaf className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[10px] text-amber-400 font-mono font-bold uppercase tracking-widest block mb-1">
+                      {"// SPECIMEN VALIDATION ADVISORY"}
+                    </span>
+                    <h3 className="font-heading font-semibold text-white text-heading-xs tracking-tight">
+                      {t('gate_rejected_title', 'Photo Could Not Be Verified as a Leaf')}
+                    </h3>
+                    <p className="text-white/70 mt-1.5 text-body-sm leading-relaxed font-light">
+                      {t(`gate_reason_${rejection.reason}`, rejection.message)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Helpful Guidance Hint Box */}
+                <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-start gap-3">
+                  <Lightbulb className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                  <div className="text-body-sm text-white/80">
+                    <span className="font-semibold text-amber-300 block mb-0.5 text-caption uppercase tracking-wider font-mono">
+                      {t('gate_rejected_hint_label', 'Helpful Advice')}
+                    </span>
+                    <p className="text-white/60 text-body-sm leading-relaxed">
+                      {rejection.hint || t('gate_default_hint', 'Take a clear, close photo of a single leaf in daylight.')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Try another photo action */}
+                <div className="pt-2 flex items-center gap-3">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    icon={ImageIcon}
+                    onClick={() => {
+                      handleReset();
+                      if (fileRef.current) fileRef.current.click();
+                    }}
+                  >
+                    {t('gate_try_another', 'Try another photo')}
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={handleReset}>
+                    Clear Viewport
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Error */}
-            {error && (
+            {error && !rejection && (
               <motion.div
                 key="error"
                 {...slideUp}
@@ -339,7 +449,7 @@ const Disease = () => {
             )}
 
             {/* Placeholder */}
-            {!result && !error && !loading && (
+            {!result && !error && !rejection && !loading && (
               <motion.div
                 key="placeholder"
                 {...slideUp}

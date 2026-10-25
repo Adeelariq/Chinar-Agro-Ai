@@ -267,11 +267,29 @@ class DiseaseEngine:
                 probabilities = (prob1 + prob2) / 2.0
                 
                 top_probs, top_indices = torch.topk(
-                    probabilities, min(top_k, self.num_classes))
+                    probabilities, min(top_k, self.num_classes)
+                )
+                
+                # Compute Shannon entropy
+                p_clamped = probabilities.clamp(min=1e-9)
+                entropy = float((-p_clamped * p_clamped.log()).sum().item())
 
             # ── Extract results ───────────────────────────────
             top_class = self.class_names[top_indices[0].item()]
-            top_confidence = top_probs[0].item() * 100
+            top_conf_raw = top_probs[0].item()
+            top_confidence = top_conf_raw * 100
+
+            # ── Open-Set Unknown Detection (Aligned with Ensemble) ──
+            is_unknown = False
+            unknown_reasons = []
+            if top_conf_raw < 0.70:
+                is_unknown = True
+                unknown_reasons.append(f"low_confidence({top_conf_raw:.3f} < 0.70)")
+            if entropy > 1.5:
+                is_unknown = True
+                unknown_reasons.append(f"high_entropy({entropy:.3f} > 1.5)")
+
+            unknown_reason_str = " | ".join(unknown_reasons) if unknown_reasons else ""
 
             # Parse disease name (format: Plant___Condition)
             parts = top_class.split('___')
@@ -298,11 +316,17 @@ class DiseaseEngine:
 
             result = {
                 'success':          True,
+                'prediction':       "Unknown Disease" if is_unknown else top_class,
                 'disease_name':     top_class,
                 'plant':            plant,
                 'condition':        condition,
                 'confidence':       top_confidence,
+                'confidence_raw':   round(top_conf_raw, 6),
                 'confidence_level': confidence_level,
+                'is_unknown':       is_unknown,
+                'unknown_detected': is_unknown,
+                'unknown_reason':   unknown_reason_str,
+                'entropy':          round(entropy, 4),
                 'top_predictions':  top_predictions,
                 'image_path':       image_path,
             }
@@ -310,7 +334,7 @@ class DiseaseEngine:
             logger.log_info(
                 "DISEASE",
                 f"Predicted: {top_class} ({top_confidence:.1f}%, "
-                f"{confidence_level})")
+                f"{confidence_level}) | unknown={is_unknown} entropy={entropy:.3f}")
             return result
 
         except Exception as e:

@@ -57,10 +57,14 @@ try:
 except Exception:
     pass
 
+import io
+import json
+from PIL import Image
 
 from smart_system.recommendations import RecommendationEngine
 from smart_system.farm_ai_assistant import generate_farming_response
 from smart_system.gemini_advisor import generate_crop_advice
+from smart_system.input_validator import validate_plant_image, get_rejection_payload
 
 # ══════════════════════════════════════════════════════════════
 # PART 6 — LOGGING SYSTEM
@@ -589,6 +593,59 @@ async def health_check():
     }
 
 
+@app.get("/supported-crops")
+async def get_supported_crops():
+    """
+    Returns unique supported crop names derived from the 52 disease model classes.
+    """
+    try:
+        class_names = []
+        if disease_engine is not None and getattr(disease_engine, "class_names", None):
+            class_names = disease_engine.class_names
+        elif os.path.isfile(config.DISEASE_CLASS_MAP):
+            with open(config.DISEASE_CLASS_MAP, 'r') as f:
+                data = json.load(f)
+            class_names = data.get('class_names', data.get('classes', []))
+
+        crops = sorted(list(set(
+            name.split("___")[0].replace("_", " ").strip()
+            for name in class_names
+            if name
+        )))
+
+        return {
+            "status": "success",
+            "supported_crops": crops,
+            "total_crops": len(crops),
+            "total_classes": len(class_names),
+        }
+    except Exception as e:
+        error_response(f"Failed to fetch supported crops: {e}")
+
+
+def check_plant_image_gate(image_bytes: bytes) -> tuple[Optional[JSONResponse], float]:
+    """
+    Validates uploaded leaf image using the input validation gate.
+    Returns (None, plant_score) if passed, or (JSONResponse(422, ...), 0.0) if rejected.
+    """
+    try:
+        pil_img = Image.open(io.BytesIO(image_bytes))
+    except Exception as e:
+        log_error(f"Failed to decode image: {e}")
+        return JSONResponse(status_code=422, content=get_rejection_payload("invalid_image")), 0.0
+
+    validation = validate_plant_image(pil_img)
+    if not validation.get("ok", False):
+        reason = validation.get("reason", "not_a_plant")
+        plant_score = float(validation.get("plant_score", 0.0))
+        log_info(
+            f"Input validation gate rejected image: reason={reason}, "
+            f"plant_score={plant_score:.3f}, checks={validation.get('checks')}"
+        )
+        return JSONResponse(status_code=422, content=get_rejection_payload(reason)), plant_score
+
+    return None, float(validation.get("plant_score", 1.0))
+
 
 # ══════════════════════════════════════════════════════════════
 # ENDPOINTS
@@ -603,6 +660,11 @@ async def predict_disease(request: Request, file: UploadFile = File(...)):
 
         # ── Upload guard: size + MIME ──────────────────────────
         image_data = await validate_upload(file)
+
+        # ── Input validation gate (non-plant rejection) ───────
+        gate_err, plant_score = check_plant_image_gate(image_data)
+        if gate_err is not None:
+            return gate_err
 
         # ── PART 4: Validate image extension ──────────────────
         ext = os.path.splitext(file.filename or "")[1].lower()
@@ -629,6 +691,39 @@ async def predict_disease(request: Request, file: UploadFile = File(...)):
                 disease_name = result["disease_name"]
                 confidence   = result["confidence"]
                 log_prediction("DISEASE", f"{disease_name} ({confidence:.1f}%)")
+
+                # Stricter "healthy" rule: require plant_score >= 0.75 and confidence >= 85.0 (0.85)
+                if "healthy" in disease_name.lower():
+                    if plant_score < 0.75 or confidence < 85.0:
+                        log_info(
+                            f"Healthy prediction rejected by strict gate (plant_score={plant_score:.2f}, "
+                            f"confidence={confidence:.1f}%)"
+                        )
+                        return {
+                            "status":           "uncertain",
+                            "message":          "Healthy diagnosis requires high certainty. Leaf features could not be verified with sufficient confidence.",
+                            "reason":           "healthy_not_confident",
+                            "confidence":       round(confidence, 1),
+                            "confidence_level": "LOW",
+                            "top_predictions": [
+                                {"disease": name, "confidence": round(conf, 1)}
+                                for name, conf in result.get("top_predictions", [])[:3]
+                            ],
+                        }
+
+                # Open-set unknown check from engine
+                if result.get("is_unknown"):
+                    return {
+                        "status":           "uncertain",
+                        "message":          "Leaf disease could not be identified with certainty. Please retake with a clearer photo.",
+                        "reason":           result.get("unknown_reason", "low_confidence"),
+                        "confidence":       round(confidence, 1),
+                        "confidence_level": "LOW",
+                        "top_predictions": [
+                            {"disease": name, "confidence": round(conf, 1)}
+                            for name, conf in result.get("top_predictions", [])[:3]
+                        ],
+                    }
 
                 # D3 — Guard for LOW confidence predictions
                 if confidence < 40.0:
@@ -702,6 +797,11 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
         # ── Upload guard: size + MIME ──────────────────────────
         image_data = await validate_upload(file)
 
+        # ── Input validation gate (non-plant rejection) ───────
+        gate_err, plant_score = check_plant_image_gate(image_data)
+        if gate_err is not None:
+            return gate_err
+
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in VALID_IMAGE_EXTENSIONS:
             raise HTTPException(
@@ -740,6 +840,18 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
 
                 em = diagnosis.get("ensemble_meta", {})
                 is_unknown = em.get("is_unknown", diagnosis.get("status") == "Unknown")
+                unknown_reason = em.get("unknown_reason", "")
+                pred_disease = diagnosis.get("disease", "")
+
+                # Stricter "healthy" rule: plant_score >= 0.75 and top confidence >= 85.0
+                if "healthy" in pred_disease.lower() or "healthy" in str(diagnosis.get("prediction", "")).lower():
+                    if plant_score < 0.75 or diagnosis.get("confidence", 0.0) < 85.0:
+                        is_unknown = True
+                        unknown_reason = "healthy_not_confident"
+                        em["is_unknown"] = True
+                        em["unknown_reason"] = "healthy_not_confident"
+                        diagnosis["status"] = "Unknown"
+
                 pred_str   = (
                     "Unknown Disease"
                     if is_unknown
@@ -804,11 +916,24 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
                     {"label": d["label"], "confidence": d["confidence_pct"]}
                     for d in result.get("top_predictions", [])[:5]
                 ]
+
+                is_unknown = result.get("is_unknown", False)
+                unknown_reason = result.get("unknown_reason", "")
+                pred_disease = result.get("disease_name", "")
+                if "healthy" in pred_disease.lower() or "healthy" in result.get("prediction", "").lower():
+                    if plant_score < 0.75 or result.get("confidence", 0.0) < 85.0:
+                        is_unknown = True
+                        unknown_reason = "healthy_not_confident"
+                        result["is_unknown"] = True
+                        result["unknown_detected"] = True
+                        result["unknown_reason"] = "healthy_not_confident"
+                        result["prediction"] = "Unknown Disease"
+
                 log_prediction(
                     "DETECT-DISEASE",
                     f"{result['prediction']} ({result['confidence']:.1f}%) "
                     f"ensemble={result.get('used_ensemble')} "
-                    f"unknown={result.get('is_unknown')}"
+                    f"unknown={is_unknown}"
                 )
                 return {
                     "status":                "success",
@@ -816,9 +941,9 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
                     "confidence":            round(result["confidence"], 2),
                     "heatmap":               "",
                     "heatmap_url":           "",
-                    "is_unknown":            result.get("is_unknown", False),
-                    "unknown_detected":      result.get("unknown_detected", False),
-                    "unknown_reason":        result.get("unknown_reason", ""),
+                    "is_unknown":            is_unknown,
+                    "unknown_detected":      is_unknown,
+                    "unknown_reason":        unknown_reason,
                     "used_ensemble":         result.get("used_ensemble", False),
                     "early_exit_triggered":  result.get("early_exit_triggered", False),
                     "ensemble_weights":      result.get("ensemble_weights", {}),
@@ -837,21 +962,32 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
                     {"label": name, "confidence": round(conf, 1)}
                     for name, conf in result.get("top_predictions", [])[:5]
                 ]
+
+                is_unknown = result.get("is_unknown", result["confidence"] < 70.0)
+                unknown_reason = result.get("unknown_reason", "low_confidence(single_model)" if result["confidence"] < 70.0 else "")
+                pred_disease = result.get("disease_name", "")
+                if "healthy" in pred_disease.lower() or "healthy" in result.get("prediction", "").lower():
+                    if plant_score < 0.75 or result.get("confidence", 0.0) < 85.0:
+                        is_unknown = True
+                        unknown_reason = "healthy_not_confident"
+
+                pred_str = "Unknown Disease" if is_unknown else result["disease_name"]
+
                 return {
                     "status":                "success",
-                    "prediction":            result["disease_name"],
+                    "prediction":            pred_str,
                     "confidence":            round(result["confidence"], 2),
                     "heatmap":               "",
                     "heatmap_url":           "",
-                    "is_unknown":            result["confidence"] < 70.0,
-                    "unknown_detected":      result["confidence"] < 70.0,
-                    "unknown_reason":        "low_confidence(single_model)" if result["confidence"] < 70.0 else "",
+                    "is_unknown":            is_unknown,
+                    "unknown_detected":      is_unknown,
+                    "unknown_reason":        unknown_reason,
                     "used_ensemble":         False,
                     "early_exit_triggered":  False,
                     "ensemble_weights":      {},
                     "model_confidences":     {"efficientnet_b0": round(result["confidence"], 2)},
                     "disagreement_detected": False,
-                    "entropy":               0.0,
+                    "entropy":               result.get("entropy", 0.0),
                     "top_predictions":       top_out,
                 }
             else:
@@ -1250,6 +1386,11 @@ async def plant_doctor_diagnose(request: Request, file: UploadFile = File(...)):
         # ── Upload guard: size + MIME ──────────────────────────
         image_data = await validate_upload(file)
 
+        # ── Input validation gate (non-plant rejection) ───────
+        gate_err, plant_score = check_plant_image_gate(image_data)
+        if gate_err is not None:
+            return gate_err
+
         # Validate image extension
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in VALID_IMAGE_EXTENSIONS:
@@ -1270,6 +1411,16 @@ async def plant_doctor_diagnose(request: Request, file: UploadFile = File(...)):
 
             # Run the full diagnostic pipeline
             result = plant_doctor_pipeline.diagnose(file_path)
+
+            # Stricter "healthy" rule: require plant_score >= 0.75 and confidence >= 85.0
+            if "healthy" in str(result.get("disease", "")).lower():
+                if plant_score < 0.75 or float(result.get("confidence", 0.0)) < 85.0:
+                    result["status"] = "Unknown"
+                    result["reason"] = "healthy_not_confident"
+                    result["disease"] = "Unknown Disease"
+                    result["confidence_assessment"] = (
+                        "Uncertain — Healthy diagnosis requires >= 85% confidence and plant score >= 0.75"
+                    )
 
             # ── Construct Visual Output URL (Improvement #4) ─────
             # Return a full URL instead of a local file path

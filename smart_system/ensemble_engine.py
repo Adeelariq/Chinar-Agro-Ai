@@ -41,7 +41,7 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
 
 # Open-set thresholds
 UNKNOWN_CONF_THRESHOLD:   float = 0.70   # max prob below this → unknown
-UNKNOWN_ENTROPY_THRESHOLD: float = 2.5   # Shannon entropy above this → unknown
+UNKNOWN_ENTROPY_THRESHOLD: float = 1.5   # Shannon entropy above this → unknown (tightened from 2.5)
 DISAGREEMENT_THRESHOLD:   float = 0.50   # top-1 disagreement ratio → uncertain
 
 # Early-exit: skip ensemble when B0 is very confident

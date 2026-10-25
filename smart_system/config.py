@@ -142,6 +142,7 @@ ENSEMBLE_WEIGHT_B1:    float = 0.3   # EfficientNet-B1 (pretrained + fine-tuned)
 # Open-set detection threshold (raw probability 0–1)
 # If max ensemble probability < this → return "Unknown Disease"
 ENSEMBLE_UNKNOWN_THRESHOLD: float = 0.70
+ENSEMBLE_UNKNOWN_ENTROPY_THRESHOLD: float = 1.5   # Shannon entropy in nats (tightened from 2.5)
 
 # Early-exit threshold (raw probability 0–1)
 # If EfficientNet-B0 alone exceeds this, skip ensemble computation

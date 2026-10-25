@@ -135,5 +135,16 @@
   "crop_confidence": "اعتماد اسکور",
   "crop_alternatives": "اہم متبادل",
   "crop_advice": "زرعی مشورہ",
-  "crop_ai_advisor": "اے آئی فارمنگ ایڈوائزر"
+  "crop_ai_advisor": "اے آئی فارمنگ ایڈوائزر",
+  "gate_rejected_title": "تصویر کی پتے کے طور پر تصدیق نہیں ہو سکی",
+  "gate_rejected_hint_label": "مفید مشورہ",
+  "gate_try_another": "دوسری تصویر آزمائیں",
+  "gate_reason_too_small": "تصویر کا سائز بہت چھوٹا ہے۔ کم از کم 100 پکسلز والی تصویر اپ لوڈ کریں۔",
+  "gate_reason_too_blurry": "تصویر بہت دھندلی ہے۔ براہ کرم کیمرے کو مستحکم رکھ کر پتے کی تصویر لیں۔",
+  "gate_reason_too_dark": "تصویر بہت تاریک ہے۔ براہ کرم مناسب روشنی میں تصویر لیں۔",
+  "gate_reason_too_bright": "تصویر میں بہت زیادہ چمک یا چکاچوند ہے۔",
+  "gate_reason_not_a_plant": "یہ تصویر کسی پودے یا پتے کی نہیں لگتی۔ براہ کرم صرف پتے پر توجہ مرکوز کریں۔",
+  "gate_default_hint": "دن کی روشنی میں کسی ایک پتے کی واضح اور قریبی تصویر لیں۔",
+  "disease_supported_crops_title": "معاون فصلیں",
+  "disease_supported_crops_desc": "ہمارا تشخیصی ماڈل درج ذیل فصلوں کی اقسام کی جانچ کر سکتا ہے:"
 }

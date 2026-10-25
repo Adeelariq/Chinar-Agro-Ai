@@ -225,6 +225,7 @@ The app will open at `http://localhost:3000`.
 | `POST` | `/plant-doctor` | FAISS + CLIP similarity-based diagnosis |
 | `POST` | `/verify-pesticide` | 11-step pesticide authentication pipeline |
 | `POST` | `/chinar-agro-report` | Unified farm intelligence report |
+| `GET` | `/supported-crops` | Returns unique crop varieties supported by disease models |
 
 ---
 
@@ -321,7 +322,12 @@ Replace the example value with the actual deployed backend URL, then trigger a f
 | `GEMINI_API_KEY` | `ai_api/.env` (server-side) | For Gemini-powered features | Server-side Gemini API key; **keep it secret** |
 | `ALLOWED_ORIGINS` | `ai_api/.env` (server-side) | Recommended for production | Comma-separated list of allowed CORS origins. Default: `http://localhost:3000,http://127.0.0.1:3000`. Set to your production frontend URL(s) before deploying. |
 | `ADMIN_TOKEN` | `ai_api/.env` (server-side) | Recommended | Shared secret required in the `X-Admin-Token` header to call `POST /ensemble-weights`. If unset, the endpoint returns 403 to everyone. |
+| `ENABLE_LEAF_GATE` | `ai_api/.env` (server-side) | Optional (default: `true`) | Master switch for the plant input validation gate. When false, bypasses the gate. |
+| `ENABLE_LEAF_GATE_CLIP` | `ai_api/.env` (server-side) | Optional (default: `true`) | Controls CLIP zero-shot classification gate. When true and `clip` is installed, lazy-loads CLIP ViT-B/32 on CPU (~350 MB download on first run). If unavailable or disabled, gracefully falls back to heuristic HSV vegetation + Haar face detection. |
+| `PLANT_GATE_THRESHOLD` | `ai_api/.env` (server-side) | Optional (default: `0.60`) | Acceptance threshold for total probability mass on positive plant prompts in the CLIP zero-shot gate. Run `python scripts/eval_gate.py` to calibrate. |
 | `REACT_APP_API_URL` | `frontend/.env.local` (build-time) | Recommended for production | Base URL of the deployed FastAPI backend. Copy `frontend/.env.example` and fill in the deployed URL. |
+
+> **Note on CLIP Weights Download:** On the first inference request with CLIP enabled, PyTorch downloads the OpenAI CLIP ViT-B/32 model (~350 MB). To ensure stability, the model is lazy-loaded with a fallback: if the download fails or the environment is offline, the system logs a warning and automatically falls back to OpenCV heuristic validation without interrupting server operation.
 
 > **Tip:** Never commit real secrets. Use your hosting provider's secret manager or environment variable dashboard.
 

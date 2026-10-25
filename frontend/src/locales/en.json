@@ -142,5 +142,16 @@
   "footer_feature_forecast": "Ensemble yield forecasting",
   "footer_feature_assistant": "Gemini farm assistant",
   "footer_rights": "All rights reserved.",
-  "footer_built_for": "Built for growers, agronomists, and field teams."
+  "footer_built_for": "Built for growers, agronomists, and field teams.",
+  "gate_rejected_title": "Photo Could Not Be Verified as a Leaf",
+  "gate_rejected_hint_label": "Helpful Guidance",
+  "gate_try_another": "Try Another Photo",
+  "gate_reason_too_small": "The photo is too small. Please upload an image with at least 100 pixels on both sides.",
+  "gate_reason_too_blurry": "The image is too blurry to detect leaf details. Please hold your camera steady.",
+  "gate_reason_too_dark": "The photo is too dark. Please take a picture with adequate natural lighting.",
+  "gate_reason_too_bright": "The photo is overexposed or has excessive glare.",
+  "gate_reason_not_a_plant": "The image does not appear to be a crop plant or leaf. Please ensure only plant leaves are in focus.",
+  "gate_default_hint": "Take a clear, close photo of a single leaf in daylight.",
+  "disease_supported_crops_title": "Supported Crops",
+  "disease_supported_crops_desc": "Trained diagnostic vision covers these crop varieties:"
 }
