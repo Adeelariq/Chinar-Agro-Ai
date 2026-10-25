@@ -178,6 +178,12 @@ pip install -r requirements.txt
 Create `ai_api/.env`:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional — restrict CORS (comma-separated origins). Defaults to localhost:3000 / 127.0.0.1:3000.
+# ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.example.com
+
+# Optional — protect POST /ensemble-weights. Set a strong random string.
+# ADMIN_TOKEN=change-me-to-a-long-random-secret
 ```
 
 ### 3. Start Backend API
@@ -310,10 +316,14 @@ Replace the example value with the actual deployed backend URL, then trigger a f
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | For Gemini-powered features | Server-side Gemini API key; keep it secret |
-| `REACT_APP_API_URL` | Recommended for production | Base URL of the deployed FastAPI backend; otherwise the frontend may default to localhost |
+| Variable | Where | Required | Description |
+|----------|-------|----------|-------------|
+| `GEMINI_API_KEY` | `ai_api/.env` (server-side) | For Gemini-powered features | Server-side Gemini API key; **keep it secret** |
+| `ALLOWED_ORIGINS` | `ai_api/.env` (server-side) | Recommended for production | Comma-separated list of allowed CORS origins. Default: `http://localhost:3000,http://127.0.0.1:3000`. Set to your production frontend URL(s) before deploying. |
+| `ADMIN_TOKEN` | `ai_api/.env` (server-side) | Recommended | Shared secret required in the `X-Admin-Token` header to call `POST /ensemble-weights`. If unset, the endpoint returns 403 to everyone. |
+| `REACT_APP_API_URL` | `frontend/.env.local` (build-time) | Recommended for production | Base URL of the deployed FastAPI backend. Copy `frontend/.env.example` and fill in the deployed URL. |
+
+> **Tip:** Never commit real secrets. Use your hosting provider's secret manager or environment variable dashboard.
 
 ## 📦 Tech Stack
 

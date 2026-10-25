@@ -1,0 +1,4 @@
+# Training-only dependencies (not needed at API runtime)
+# Install with: pip install -r requirements-train.txt
+matplotlib
+seaborn

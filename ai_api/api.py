@@ -14,7 +14,10 @@ Version : 3.0.0
   • File-based rotating API logger
   • Singleton model globals (load once, reuse always)
   • /health endpoint
-  • CORS enabled for all origins
+  • CORS restricted to ALLOWED_ORIGINS env var
+  • Upload size (10 MB) and MIME-type guard
+  • Admin-token protection on POST /ensemble-weights
+  • Per-IP rate limiting on Gemini-backed endpoints
 """
 
 import warnings
@@ -25,6 +28,9 @@ import sys
 import shutil
 import logging
 import platform
+import time
+import collections
+import threading
 from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
@@ -36,7 +42,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -127,10 +133,17 @@ app = FastAPI(
     description="Production-grade AI inference API for plant disease, crop recommendation, and yield prediction."
 )
 
+# ── CORS: read allowed origins from env (comma-separated) ─────
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000"
+)
+ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,   # we do not use cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -356,6 +369,100 @@ def _load_yield() -> bool:
 
 VALID_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp", ".gif"}
 
+# ══════════════════════════════════════════════════════════════
+# UPLOAD GUARD — size limit + MIME type whitelist
+# ══════════════════════════════════════════════════════════════
+
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+_ALLOWED_CONTENT_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/bmp"
+}
+
+
+async def validate_upload(file: UploadFile) -> bytes:
+    """
+    Read *file* fully, then:
+      - Reject with HTTP 413 if payload exceeds 10 MB.
+      - Reject with HTTP 415 if Content-Type is not an accepted image MIME type.
+
+    Returns the raw bytes so callers don't need to re-read the stream.
+    """
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type and content_type not in _ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail={
+                "status": "error",
+                "message": (
+                    f"Unsupported media type '{content_type}'. "
+                    "Accepted: image/jpeg, image/png, image/webp, image/bmp"
+                ),
+            },
+        )
+
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "status": "error",
+                "message": (
+                    f"File too large ({len(data) / (1024*1024):.1f} MB). "
+                    "Maximum allowed size is 10 MB."
+                ),
+            },
+        )
+    return data
+
+
+# ══════════════════════════════════════════════════════════════
+# RATE LIMITER — simple per-IP in-memory sliding window
+# ══════════════════════════════════════════════════════════════
+
+_RATE_LIMIT_REQUESTS = 10     # requests
+_RATE_LIMIT_WINDOW   = 60     # seconds
+
+# {ip: deque([timestamp, ...])}  — thread-safe via a lock
+_rate_counters: dict = collections.defaultdict(collections.deque)
+_rate_lock = threading.Lock()
+
+
+def _get_client_ip(request: Request) -> str:
+    """Return the real client IP, honouring X-Forwarded-For from a proxy."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_rate_limit(request: Request) -> None:
+    """
+    Sliding-window rate limiter: raises HTTP 429 when the client IP
+    exceeds _RATE_LIMIT_REQUESTS calls within _RATE_LIMIT_WINDOW seconds.
+    """
+    ip  = _get_client_ip(request)
+    now = time.monotonic()
+
+    with _rate_lock:
+        dq = _rate_counters[ip]
+        # Evict timestamps outside the window
+        while dq and now - dq[0] > _RATE_LIMIT_WINDOW:
+            dq.popleft()
+
+        if len(dq) >= _RATE_LIMIT_REQUESTS:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "status": "error",
+                    "message": (
+                        f"Rate limit exceeded: max {_RATE_LIMIT_REQUESTS} requests "
+                        f"per {_RATE_LIMIT_WINDOW} seconds per IP. Please wait."
+                    ),
+                },
+            )
+        dq.append(now)
+
+
 class CropRequest(BaseModel):
     Nitrogen:    float
     Phosphorus:  float
@@ -488,11 +595,14 @@ async def health_check():
 # ══════════════════════════════════════════════════════════════
 
 @app.post("/predict-disease")
-async def predict_disease(file: UploadFile = File(...)):
+async def predict_disease(request: Request, file: UploadFile = File(...)):
     log_request("/predict-disease", {"filename": file.filename})
     try:
         if not _disease_loaded or disease_engine is None:
             error_response("Disease model is not loaded", 503)
+
+        # ── Upload guard: size + MIME ──────────────────────────
+        image_data = await validate_upload(file)
 
         # ── PART 4: Validate image extension ──────────────────
         ext = os.path.splitext(file.filename or "")[1].lower()
@@ -511,7 +621,7 @@ async def predict_disease(file: UploadFile = File(...)):
 
         try:
             with open(file_path, "wb") as buf:
-                shutil.copyfileobj(file.file, buf)
+                buf.write(image_data)
 
             result = disease_engine.predict(file_path)
 
@@ -589,6 +699,9 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
     log_request("/detect-disease", {"filename": file.filename})
 
     try:
+        # ── Upload guard: size + MIME ──────────────────────────
+        image_data = await validate_upload(file)
+
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in VALID_IMAGE_EXTENSIONS:
             raise HTTPException(
@@ -603,7 +716,7 @@ async def detect_disease(request: Request, file: UploadFile = File(...)):
 
         try:
             with open(file_path, "wb") as buf:
-                shutil.copyfileobj(file.file, buf)
+                buf.write(image_data)
 
             # ── OPTION A: Full pipeline (Ensemble + Grad-CAM) ─
             if plant_doctor_pipeline is not None:
@@ -776,7 +889,10 @@ async def get_ensemble_weights():
 
 
 @app.post("/ensemble-weights")
-async def update_ensemble_weights(payload: dict):
+async def update_ensemble_weights(
+    payload: dict,
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+):
     """
     Dynamically update ensemble weights at runtime.
 
@@ -792,6 +908,14 @@ async def update_ensemble_weights(payload: dict):
     --------
     { "status": "updated", "new_weights": { ... } }
     """
+    # ── Admin-token guard ─────────────────────────────────────
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token or x_admin_token != admin_token:
+        raise HTTPException(
+            status_code=403,
+            detail={"status": "error", "message": "Forbidden: valid X-Admin-Token header required."},
+        )
+
     if ensemble_engine is None:
         raise HTTPException(status_code=503, detail="Ensemble engine not loaded.")
 
@@ -881,18 +1005,19 @@ async def predict_crop(request: CropRequest):
 
 
 @app.post("/ask-ai-crop")
-async def ask_ai_crop(request: CropRequest):
+async def ask_ai_crop(request: Request, body: CropRequest):
     """On-demand Gemini AI advice for crop recommendations (saves API quota)."""
-    log_request("/ask-ai-crop", request.dict())
+    check_rate_limit(request)
+    log_request("/ask-ai-crop", body.dict())
     try:
         input_data = {
-            'N': request.Nitrogen,
-            'P': request.Phosphorus,
-            'K': request.Potassium,
-            'temperature': request.Temperature,
-            'humidity': request.Humidity,
-            'ph': request.pH,
-            'rainfall': request.Rainfall,
+            'N': body.Nitrogen,
+            'P': body.Phosphorus,
+            'K': body.Potassium,
+            'temperature': body.Temperature,
+            'humidity': body.Humidity,
+            'ph': body.pH,
+            'rainfall': body.Rainfall,
         }
 
         # Run crop prediction to get the recommended crop
@@ -900,13 +1025,13 @@ async def ask_ai_crop(request: CropRequest):
             error_response("Crop model is not loaded", 503)
 
         result = crop_engine.predict(
-            N=request.Nitrogen,
-            P=request.Phosphorus,
-            K=request.Potassium,
-            temperature=request.Temperature,
-            humidity=request.Humidity,
-            ph=request.pH,
-            rainfall=request.Rainfall,
+            N=body.Nitrogen,
+            P=body.Phosphorus,
+            K=body.Potassium,
+            temperature=body.Temperature,
+            humidity=body.Humidity,
+            ph=body.pH,
+            rainfall=body.Rainfall,
         )
 
         if not result.get("success"):
@@ -1091,15 +1216,16 @@ async def predict_yield_full(payload: dict):
 
 
 @app.post("/farm-assistant")
-async def farm_assistant(request: FarmAssistantRequest):
-    log_request("/farm-assistant", request.dict())
+async def farm_assistant(request: Request, body: FarmAssistantRequest):
+    check_rate_limit(request)
+    log_request("/farm-assistant", body.dict())
     try:
-        question = request.question
+        question = body.question
         answer = generate_farming_response(question)
-        
+
         # We don't log the full answer to keep logs clean, but log the query
         logger.info(f"Farm Assistant Query: '{question}'")
-        
+
         return {
             "status": "success",
             "question": question,
@@ -1121,6 +1247,9 @@ async def plant_doctor_diagnose(request: Request, file: UploadFile = File(...)):
         if plant_doctor_pipeline is None:
             error_response("Plant Doctor pipeline is not loaded", 503)
 
+        # ── Upload guard: size + MIME ──────────────────────────
+        image_data = await validate_upload(file)
+
         # Validate image extension
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in VALID_IMAGE_EXTENSIONS:
@@ -1137,7 +1266,7 @@ async def plant_doctor_diagnose(request: Request, file: UploadFile = File(...)):
 
         try:
             with open(file_path, "wb") as buf:
-                shutil.copyfileobj(file.file, buf)
+                buf.write(image_data)
 
             # Run the full diagnostic pipeline
             result = plant_doctor_pipeline.diagnose(file_path)
@@ -1214,15 +1343,20 @@ async def get_yield_trends(request: YieldTrendRequest):
 
 @app.post("/verify-pesticide")
 async def verify_pesticide(
+    request: Request,
     file: UploadFile = File(...),
     target_crop: str = Form(""),
     target_disease: str = Form("")
 ):
     """AI-Based Pesticide Authentication and Advisory endpoint (Production-grade 6-step analysis)."""
+    check_rate_limit(request)
     log_request("/verify-pesticide", {"filename": file.filename})
     try:
         if pesticide_engine is None:
             error_response("Pesticide engine is not loaded", 503)
+
+        # ── Upload guard: size + MIME ──────────────────────────
+        image_bytes = await validate_upload(file)
 
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in VALID_IMAGE_EXTENSIONS:
@@ -1233,7 +1367,6 @@ async def verify_pesticide(
 
         from PIL import Image
         import io
-        image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
         result = pesticide_engine.analyze_label(image, target_crop, target_disease)
@@ -1260,6 +1393,7 @@ async def verify_pesticide(
 
 @app.post("/chinar-agro-report")
 async def chinar_agro_report(
+    request:     Request,
     file:        UploadFile = File(None),
     Nitrogen:    float      = Form(...),
     Phosphorus:  float      = Form(...),
@@ -1273,6 +1407,7 @@ async def chinar_agro_report(
     Year:        int        = Form(...),
     Season:      str        = Form(None),
 ):
+    check_rate_limit(request)
     log_request("/chinar-agro-report", {"Area": Area, "Crop": Crop, "Year": Year})
     report = {
         "disease_prediction":   None,
@@ -1284,31 +1419,39 @@ async def chinar_agro_report(
     # 1. Disease —————————————————————————————————————————
     if file and file.filename:
         try:
-            ext = os.path.splitext(file.filename)[1].lower()
-            if ext not in VALID_IMAGE_EXTENSIONS:
-                report["disease_prediction"] = {"error": "Invalid image file type"}
-            elif not _disease_loaded or disease_engine is None:
-                report["disease_prediction"] = {"error": "Disease model not loaded"}
-            else:
-                temp_dir  = os.path.join(PROJECT_ROOT, "tmp")
-                os.makedirs(temp_dir, exist_ok=True)
-                safe_name = f"report_{datetime.now().strftime('%H%M%S%f')}{ext}"
-                file_path = os.path.join(temp_dir, safe_name)
-                try:
-                    with open(file_path, "wb") as buf:
-                        shutil.copyfileobj(file.file, buf)
-                    d_res = disease_engine.predict(file_path)
-                    if d_res.get("success"):
-                        report["disease_prediction"] = {
-                            "disease":    d_res["disease_name"],
-                            "confidence": d_res["confidence"],
-                        }
-                        log_prediction("DISEASE", d_res["disease_name"])
-                    else:
-                        report["disease_prediction"] = {"error": d_res.get("error")}
-                finally:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+            # ── Upload guard: size + MIME ──────────────────────
+            try:
+                image_data = await validate_upload(file)
+            except HTTPException as ue:
+                report["disease_prediction"] = {"error": ue.detail.get("message", "Upload error")}
+                image_data = None
+
+            if image_data is not None:
+                ext = os.path.splitext(file.filename)[1].lower()
+                if ext not in VALID_IMAGE_EXTENSIONS:
+                    report["disease_prediction"] = {"error": "Invalid image file type"}
+                elif not _disease_loaded or disease_engine is None:
+                    report["disease_prediction"] = {"error": "Disease model not loaded"}
+                else:
+                    temp_dir  = os.path.join(PROJECT_ROOT, "tmp")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    safe_name = f"report_{datetime.now().strftime('%H%M%S%f')}{ext}"
+                    file_path = os.path.join(temp_dir, safe_name)
+                    try:
+                        with open(file_path, "wb") as buf:
+                            buf.write(image_data)
+                        d_res = disease_engine.predict(file_path)
+                        if d_res.get("success"):
+                            report["disease_prediction"] = {
+                                "disease":    d_res["disease_name"],
+                                "confidence": d_res["confidence"],
+                            }
+                            log_prediction("DISEASE", d_res["disease_name"])
+                        else:
+                            report["disease_prediction"] = {"error": d_res.get("error")}
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
         except Exception as e:
             report["disease_prediction"] = {"error": str(e)}
             log_error(f"Chinar-agro-report disease error: {e}")
