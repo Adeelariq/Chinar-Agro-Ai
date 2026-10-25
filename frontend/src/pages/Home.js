@@ -22,7 +22,6 @@ const Home = () => {
 
   const handleLeafSelect = async (file) => {
     if (!file) return;
-    setLeafFile(file);
     setLeafPreview(URL.createObjectURL(file));
     setLeafError(null);
     setLeafRejection(null);

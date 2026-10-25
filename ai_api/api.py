@@ -65,6 +65,7 @@ from smart_system.recommendations import RecommendationEngine
 from smart_system.farm_ai_assistant import generate_farming_response
 from smart_system.gemini_advisor import generate_crop_advice
 from smart_system.input_validator import validate_plant_image, get_rejection_payload
+from smart_system import config
 
 # ══════════════════════════════════════════════════════════════
 # PART 6 — LOGGING SYSTEM
