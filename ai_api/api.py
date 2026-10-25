@@ -25,6 +25,17 @@ warnings.filterwarnings("ignore")
 
 import os
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import shutil
 import logging
 import platform
@@ -181,6 +192,21 @@ def cleanup_outputs(max_files: int = 20):
 # PART 2 + 3 — SAFE STARTUP MODEL LOADING + DIAGNOSTICS BANNER
 # ══════════════════════════════════════════════════════════════
 
+def get_server_port() -> int:
+    for i, arg in enumerate(sys.argv):
+        if arg == "--port" and i + 1 < len(sys.argv):
+            try:
+                return int(sys.argv[i + 1])
+            except ValueError:
+                pass
+        elif arg.startswith("--port="):
+            try:
+                return int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+    return int(os.environ.get("PORT", 8010))
+
+
 @app.on_event("startup")
 def startup():
     global disease_engine, crop_engine, yield_engine, yield_pipeline
@@ -191,6 +217,7 @@ def startup():
     py_ver    = platform.python_version()
     np_ver    = _safe_import_version("numpy")
     torch_ver = _safe_import_version("torch")
+    real_port = get_server_port()
 
     # ── Fix Joblib unpickling for models saved with 'config' ──
     import smart_system.config
@@ -289,7 +316,7 @@ def startup():
   Python  : {py_ver}
   NumPy   : {np_ver}
   Torch   : {torch_ver}
-  Port    : 8000
+  Port    : {real_port}
   Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 --------------------------------
   Models Status:
@@ -476,6 +503,9 @@ class CropRequest(BaseModel):
     Humidity:    float
     pH:          float
     Rainfall:    float
+    State:       Optional[str] = None
+    Season:      Optional[str] = None
+
 
     @validator("Nitrogen")
     def val_nitrogen(cls, v):
@@ -583,14 +613,49 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
+    def _pkg_version(mod_name: str) -> str:
+        try:
+            m = sys.modules.get(mod_name) or __import__(mod_name)
+            return getattr(m, "__version__", "unknown")
+        except Exception:
+            return "not_installed"
+
+    listening_port = get_server_port()
+    if request.scope.get("server") and len(request.scope["server"]) > 1:
+        listening_port = request.scope["server"][1]
+
+    np_ver = _pkg_version("numpy")
+    pd_ver = _pkg_version("pandas")
+    sk_ver = _pkg_version("sklearn")
+    xgb_ver = _pkg_version("xgboost")
+    lgb_ver = _pkg_version("lightgbm")
+
     return {
-        "status":          "running",
-        "disease_model":   _disease_loaded,
-        "ensemble_models": _ensemble_loaded,
-        "crop_model":      _crop_loaded,
-        "yield_model":     _yield_loaded,
-        "timestamp":       datetime.now().isoformat()
+        "status": "running",
+        "crop_model": bool(_crop_loaded and crop_engine is not None and getattr(crop_engine, "_loaded", False)),
+        "yield_model": bool(_yield_loaded and yield_engine is not None and getattr(yield_engine, "_loaded", False)),
+        "yield_pipeline": bool(yield_pipeline is not None),
+        "disease_model": bool(_disease_loaded),
+        "ensemble_models": bool(_ensemble_loaded),
+        "python_executable": sys.executable,
+        "python_version": sys.version,
+        "pid": os.getpid(),
+        "os_pid": os.getpid(),
+        "port": listening_port,
+        "numpy_version": np_ver,
+        "pandas_version": pd_ver,
+        "scikit_learn_version": sk_ver,
+        "xgboost_version": xgb_ver,
+        "lightgbm_version": lgb_ver,
+        "versions": {
+            "numpy": np_ver,
+            "pandas": pd_ver,
+            "scikit-learn": sk_ver,
+            "xgboost": xgb_ver,
+            "lightgbm": lgb_ver,
+        },
+        "timestamp": datetime.now().isoformat()
     }
 
 
@@ -1102,6 +1167,8 @@ async def predict_crop(request: CropRequest):
             humidity=request.Humidity,
             ph=request.pH,
             rainfall=request.Rainfall,
+            state=request.State,
+            season=request.Season,
         )
 
         if result.get("success"):
@@ -1126,6 +1193,7 @@ async def predict_crop(request: CropRequest):
                 "recommended_crop": crop_name,
                 "confidence":       round(confidence, 1),
                 "agronomic_advice": advice,
+                "regional_context": result.get("regional_context"),
                 # C1 — Top-3 alternative crop recommendations (excluding top-1)
                 "top_recommendations": [
                     {"crop": crop, "confidence": round(conf, 1)}
@@ -1155,6 +1223,8 @@ async def ask_ai_crop(request: Request, body: CropRequest):
             'humidity': body.Humidity,
             'ph': body.pH,
             'rainfall': body.Rainfall,
+            'state': body.State,
+            'season': body.Season,
         }
 
         # Run crop prediction to get the recommended crop
@@ -1169,6 +1239,8 @@ async def ask_ai_crop(request: Request, body: CropRequest):
             humidity=body.Humidity,
             ph=body.pH,
             rainfall=body.Rainfall,
+            state=body.State,
+            season=body.Season,
         )
 
         if not result.get("success"):
@@ -1460,34 +1532,48 @@ async def plant_doctor_diagnose(request: Request, file: UploadFile = File(...)):
 @app.post("/yield-trends")
 async def get_yield_trends(request: YieldTrendRequest):
     log_request("/yield-trends", request.dict())
-    if yield_trends_df is None:
-        error_response("Yield trends data not loaded", 503)
-        
     try:
-        filtered = yield_trends_df[
-            (yield_trends_df['Area'].str.lower() == request.Area.lower()) &
-            (yield_trends_df['Item'].str.lower() == request.Crop.lower())
-        ]
-        
-        if filtered.empty:
-            return {"status": "success", "success": True, "area": request.Area, "crop": request.Crop, "trends": []}
+        if yield_trends_df is not None:
+            filtered = yield_trends_df[
+                (yield_trends_df['Area'].str.lower() == request.Area.lower()) &
+                (yield_trends_df['Item'].str.lower() == request.Crop.lower())
+            ]
             
-        filtered = filtered.sort_values(by='Year')
-        
-        trends = []
-        for _, row in filtered.iterrows():
-            trends.append({
-                "Year": int(row['Year']),
-                "Yield": float(row['Yield'])
-            })
+            if filtered.empty:
+                return {"status": "success", "success": True, "area": request.Area, "crop": request.Crop, "trends": []}
+                
+            filtered = filtered.sort_values(by='Year')
             
-        return {
-            "status": "success",
-            "success": True,
-            "area": request.Area,
-            "crop": request.Crop,
-            "trends": trends
-        }
+            trends = []
+            for _, row in filtered.iterrows():
+                trends.append({
+                    "Year": int(row['Year']),
+                    "Yield": float(row['Yield'])
+                })
+                
+            return {
+                "status": "success",
+                "success": True,
+                "area": request.Area,
+                "crop": request.Crop,
+                "trends": trends
+            }
+        else:
+            # Fallback to embedded trend data from context engine
+            from smart_system.yield_predictor.context import get_trend_data
+            trend_data = get_trend_data(request.Crop, request.Area)
+            trends = [
+                {"Year": int(y), "Yield": float(v)}
+                for y, v in zip(trend_data.get("years", []), trend_data.get("yields", []))
+            ]
+            return {
+                "status": "success",
+                "success": True,
+                "area": request.Area,
+                "crop": request.Crop,
+                "trends": trends,
+                "source": trend_data.get("source", "embedded")
+            }
     except Exception as e:
         log_error(f"Yield trends error: {e}")
         error_response(f"Failed to fetch trends: {e}")

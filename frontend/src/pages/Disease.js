@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PageHeader, Button, Badge, ProgressBar, SectionHeader, Tilt, Card } from '../design-system/components';
 import { pageVariants, pageTransition, fadeInLeft, fadeInRight, slideUp, staggerContainer } from '../design-system/animations';
+import { API_BASE } from '../utils/api';
 
 const getSeverityColor = (level) => {
   const l = (level || '').toLowerCase();
@@ -118,7 +119,7 @@ const Disease = () => {
   useEffect(() => {
     const fetchSupportedCrops = async () => {
       try {
-        const { data } = await axios.get(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/supported-crops`);
+        const { data } = await axios.get(`${API_BASE}/supported-crops`);
         if (data?.supported_crops) {
           setSupportedCrops(data.supported_crops);
         }
@@ -164,7 +165,7 @@ const Disease = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/plant-doctor`, formData, {
+      const { data } = await axios.post(`${API_BASE}/plant-doctor`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
       });

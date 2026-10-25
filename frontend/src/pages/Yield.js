@@ -14,6 +14,7 @@ import {
 import { PageHeader, Card, Button, Badge, SectionHeader, Tilt } from '../design-system/components';
 import { pageVariants, pageTransition, fadeInLeft, slideUp } from '../design-system/animations';
 import { chartTheme } from '../design-system/tokens';
+import { API_BASE } from '../utils/api';
 
 /* ─── Dynamic Translations ─────────────────────────── */
 const dynamicTranslations = {
@@ -448,16 +449,19 @@ const Yield = () => {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/predict-yield-v2/full`, {
+      const res = await fetch(`${API_BASE}/predict-yield-v2/full`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.detail?.message || data?.detail || 'Prediction failed');
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = data?.detail?.message || (typeof data?.detail === 'string' ? data.detail : null) || data?.message || data?.error || res.statusText || 'Prediction failed';
+        throw new Error(`HTTP ${res.status}: ${msg}`);
+      }
       setResult(data);
     } catch (err) {
-      setError(err.message || 'Failed to connect to ML regression forecast pipeline.');
+      setError(err.message || 'Server unreachable. Please verify the backend is running.');
     } finally {
       setLoading(false);
     }

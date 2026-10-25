@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { BrainCircuit, Send } from 'lucide-react';
 import { PageHeader, Card, PulseLoader } from '../design-system/components';
 import { pageVariants, pageTransition, slideUp } from '../design-system/animations';
+import { API_BASE } from '../utils/api';
 
 const FarmAssistant = () => {
   const { t, i18n } = useTranslation();
@@ -51,7 +52,7 @@ const FarmAssistant = () => {
     setLoading(true);
 
     try {
-      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/farm-assistant`, {
+      const { data } = await axios.post(`${API_BASE}/farm-assistant`, {
         question: userMsg.text
       });
 

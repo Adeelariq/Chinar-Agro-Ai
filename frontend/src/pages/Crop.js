@@ -4,16 +4,54 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
   Droplets, AlertTriangle, Brain, Leaf, Sun, CloudRain,
-  FlaskConical, Layers, Hexagon, Sprout, Sparkles, Sliders
+  FlaskConical, Layers, Hexagon, Sprout, Sparkles, Sliders,
+  MapPin, Calendar, CheckCircle
 } from 'lucide-react';
 import { PageHeader, Card, Button, ProgressBar, SectionHeader, Tilt } from '../design-system/components';
 import { pageVariants, pageTransition, fadeInLeft, fadeInRight, slideUp } from '../design-system/animations';
+import { API_BASE } from '../utils/api';
+
+const PRESETS = [
+  {
+    name: "Punjab Plains",
+    tag: "Maize / Wheat belt",
+    icon: "🌾",
+    data: { Nitrogen: 100, Phosphorus: 45, Potassium: 40, Temperature: 28, Humidity: 65, pH: 7.2, Rainfall: 85, State: 'Punjab', Season: 'Kharif' }
+  },
+  {
+    name: "Kashmir Valley",
+    tag: "Maize / Apple / Rajma",
+    icon: "🏔️",
+    data: { Nitrogen: 70, Phosphorus: 40, Potassium: 35, Temperature: 18, Humidity: 60, pH: 6.8, Rainfall: 90, State: 'Jammu and Kashmir', Season: 'Kharif' }
+  },
+  {
+    name: "Monsoon Basin",
+    tag: "Paddy Rice belt",
+    icon: "🌧️",
+    data: { Nitrogen: 80, Phosphorus: 45, Potassium: 40, Temperature: 29, Humidity: 82, pH: 6.5, Rainfall: 220, State: 'West Bengal', Season: 'Kharif' }
+  },
+  {
+    name: "Central Dryland",
+    tag: "Cotton & Pulses",
+    icon: "🌿",
+    data: { Nitrogen: 60, Phosphorus: 35, Potassium: 30, Temperature: 27, Humidity: 50, pH: 7.5, Rainfall: 65, State: 'Maharashtra', Season: 'Kharif' }
+  }
+];
+
+const STATES = [
+  'Punjab', 'Jammu and Kashmir', 'Haryana', 'Uttar Pradesh', 'Maharashtra',
+  'Rajasthan', 'Madhya Pradesh', 'West Bengal', 'Bihar', 'Gujarat',
+  'Karnataka', 'Kerala', 'Tamil Nadu', 'Andhra Pradesh', 'Himachal Pradesh'
+];
+
+const SEASONS = ['Kharif', 'Rabi', 'Zaid'];
 
 const Crop = () => {
   const { t } = useTranslation();
   const [formData, setFormData] = useState({
-    Nitrogen: 90, Phosphorus: 40, Potassium: 40,
-    Temperature: 28, Humidity: 70, pH: 6.5, Rainfall: 200
+    Nitrogen: 100, Phosphorus: 45, Potassium: 40,
+    Temperature: 28, Humidity: 65, pH: 7.2, Rainfall: 85,
+    State: 'Punjab', Season: 'Kharif'
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -21,13 +59,24 @@ const Crop = () => {
   const [aiAdvice, setAiAdvice] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  const applyPreset = (preset) => {
+    setFormData({ ...preset.data });
+    setError(null);
+  };
+
   const handleAskAI = async () => {
     setAiLoading(true);
     try {
-      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/ask-ai-crop`, formData);
+      const { data } = await axios.post(`${API_BASE}/ask-ai-crop`, formData);
       setAiAdvice(data.ai_advice);
     } catch (err) {
-      setAiAdvice('AI advisory node is currently unreachable. Try again later.');
+      if (err.response) {
+        const d = err.response.data;
+        const msg = d?.detail?.message || (typeof d?.detail === 'string' ? d.detail : null) || d?.message || d?.error || 'Advisory node error';
+        setAiAdvice(`HTTP ${err.response.status}: ${msg}`);
+      } else {
+        setAiAdvice('AI advisory node is currently unreachable. Try again later.');
+      }
     } finally {
       setAiLoading(false);
     }
@@ -35,7 +84,8 @@ const Crop = () => {
 
   const handleChange = (e) => {
     const val = e.target.value;
-    setFormData({ ...formData, [e.target.name]: val === '' ? '' : parseFloat(val) });
+    const isNum = e.target.type === 'number';
+    setFormData({ ...formData, [e.target.name]: isNum ? (val === '' ? '' : parseFloat(val)) : val });
   };
 
   const handlePredict = async (e) => {
@@ -45,10 +95,16 @@ const Crop = () => {
     setResult(null);
     setAiAdvice(null);
     try {
-      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/predict-crop`, formData);
+      const { data } = await axios.post(`${API_BASE}/predict-crop`, formData);
       setResult(data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to connect to ML prediction pipeline.');
+      if (err.response) {
+        const d = err.response.data;
+        const msg = d?.detail?.message || (typeof d?.detail === 'string' ? d.detail : null) || d?.message || d?.error || (typeof d === 'string' ? d : null) || err.response.statusText || 'Prediction error';
+        setError(`HTTP ${err.response.status}: ${msg}`);
+      } else {
+        setError(err.message ? `Server unreachable (${err.message})` : 'Server unreachable. Please verify the backend is running.');
+      }
     } finally {
       setLoading(false);
     }
@@ -73,8 +129,38 @@ const Crop = () => {
       <PageHeader
         icon={Sprout}
         title={t('crop_title')}
-        subtitle="Cultivar Suitability Calibrator"
+        subtitle="Agro-Climatic Cultivar Recommendation & Feasibility Engine"
       />
+
+      {/* REGIONAL PRESET SELECTOR */}
+      <div className="flex flex-col gap-2">
+        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-mono">
+          Quick Agro-Ecological Presets
+        </span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {PRESETS.map((p) => {
+            const isSelected = formData.State === p.data.State && formData.Nitrogen === p.data.Nitrogen;
+            return (
+              <button
+                key={p.name}
+                type="button"
+                onClick={() => applyPreset(p)}
+                className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
+                  isSelected
+                    ? 'bg-brand-500/15 border-brand-500/40 text-white shadow-lg shadow-brand-500/10'
+                    : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04] text-white/70'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">{p.icon}</span>
+                  <span className="font-semibold text-xs text-white">{p.name}</span>
+                </div>
+                <span className="text-[10px] text-white/40 font-mono truncate w-full">{p.tag}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
@@ -82,16 +168,53 @@ const Crop = () => {
         <motion.div {...fadeInLeft} className="lg:col-span-5 flex flex-col gap-6">
           <div className="flex flex-col">
             <h2 className="text-[11px] font-bold text-white/30 uppercase tracking-widest font-mono flex items-center gap-2">
-              <Sliders className="w-3.5 h-3.5 text-brand-400" /> Soil Biosphere Calibrator
+              <Sliders className="w-3.5 h-3.5 text-brand-400" /> Soil & Climate Parameters
             </h2>
             <p className="text-caption text-white/20 mt-1 leading-relaxed">
-              Adjust Nitrogen, Phosphorus, Potassium, and geographical metrics.
+              Calibrate regional geography, soil fertility metrics, and seasonal conditions.
             </p>
           </div>
 
           <Tilt spotlight={true} intensity={20}>
             <Card variant="glass" padding="md" className="relative">
               <form onSubmit={handlePredict} className="space-y-5">
+                {/* Region & Season Inputs */}
+                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-white/[0.06]">
+                  <div>
+                    <label className="flex items-center gap-1.5 mb-1.5 text-white/50 text-[10px] uppercase tracking-wider font-semibold font-mono">
+                      <MapPin className="w-3.5 h-3.5 text-brand-400" />
+                      State / Region
+                    </label>
+                    <select
+                      name="State"
+                      value={formData.State}
+                      onChange={handleChange}
+                      className="console-input font-mono text-xs w-full bg-surface-900 text-white border border-white/10 rounded-lg p-2.5"
+                    >
+                      {STATES.map((s) => (
+                        <option key={s} value={s} className="bg-surface-900 text-white">{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-1.5 mb-1.5 text-white/50 text-[10px] uppercase tracking-wider font-semibold font-mono">
+                      <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                      Cropping Season
+                    </label>
+                    <select
+                      name="Season"
+                      value={formData.Season}
+                      onChange={handleChange}
+                      className="console-input font-mono text-xs w-full bg-surface-900 text-white border border-white/10 rounded-lg p-2.5"
+                    >
+                      {SEASONS.map((s) => (
+                        <option key={s} value={s} className="bg-surface-900 text-white">{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   {fields.map(f => (
                     <div key={f.name} className={f.name === 'Rainfall' ? 'col-span-2' : ''}>
@@ -123,7 +246,7 @@ const Crop = () => {
                     type="submit"
                     icon={Sprout}
                   >
-                    Analyze Cultivar
+                    Recommend Suitable Cultivar
                   </Button>
                 </div>
               </form>
@@ -160,9 +283,9 @@ const Crop = () => {
                 <div className="w-12 h-12 rounded-full bg-white/[0.01] border border-white/[0.04] flex items-center justify-center mb-4">
                   <Sprout className="w-5 h-5 text-white/20" />
                 </div>
-                <h4 className="font-heading text-body-md text-white/50 font-semibold">Calibration Matrix Status</h4>
+                <h4 className="font-heading text-body-md text-white/50 font-semibold">Agro-Climatic Intelligence Ready</h4>
                 <p className="text-caption text-white/20 mt-1 max-w-xs leading-relaxed">
-                  Calibrate parameters and click analyze to compute the optimal botanical recommendation.
+                  Select your state and soil metrics to compute the optimal agronomic crop recommendation.
                 </p>
               </motion.div>
             )}
@@ -188,6 +311,15 @@ const Crop = () => {
                       <h2 className="font-heading text-display-md font-bold text-white capitalize tracking-tight mt-1">
                         {result.recommended_crop}
                       </h2>
+
+                      {/* Agro-climatic ICAR validation tag */}
+                      {result.regional_context?.note && (
+                        <div className="mt-3 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 flex items-center gap-2 text-brand-300 text-[11px] font-mono">
+                          <CheckCircle className="w-3.5 h-3.5 text-brand-400 shrink-0" />
+                          <span>{result.regional_context.note}</span>
+                        </div>
+                      )}
+
                       {result.confidence && (
                         <div className="w-full max-w-xs mt-6">
                           <ProgressBar

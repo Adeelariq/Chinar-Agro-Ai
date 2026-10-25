@@ -69,7 +69,7 @@ STATE_COORDINATES: Dict[str, Tuple[float, float]] = {
 OPEN_METEO_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 # Timeout for API calls (seconds)
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = 5
 
 
 def get_state_coordinates(state: str) -> Optional[Tuple[float, float]]:

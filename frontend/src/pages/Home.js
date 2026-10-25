@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, Tilt } from '../design-system/components';
 import { pageVariants, pageTransition, slideUp } from '../design-system/animations';
+import { API_BASE } from '../utils/api';
 
 const Home = () => {
   const { t } = useTranslation();
@@ -33,7 +34,7 @@ const Home = () => {
 
     try {
       const { data } = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/detect-disease`,
+        `${API_BASE}/detect-disease`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000 }
       );

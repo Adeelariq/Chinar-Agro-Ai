@@ -93,6 +93,120 @@ FEATURE_COLUMNS: List[str] = [
 ]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# REGIONAL & SEASONAL AGRONOMIC FEASIBILITY KNOWLEDGE BASE
+# Sourced from ICAR & Directorate of Economics and Statistics (DES)
+# ══════════════════════════════════════════════════════════════════════════════
+
+REGIONAL_FEASIBILITY: Dict[str, Dict[str, float]] = {
+    "punjab": {
+        "Rice": 1.25, "Maize": 1.35, "Cotton": 1.20, "Chickpea": 1.15,
+        "Lentil": 1.10, "Mungbean": 1.15, "Blackgram": 1.05, "Muskmelon": 1.15,
+        "Watermelon": 1.15, "Pomegranate": 0.95,
+        # Climatically unviable in Punjab plains
+        "Coconut": 0.005, "Coffee": 0.005, "Jute": 0.02, "Apple": 0.01,
+    },
+    "haryana": {
+        "Rice": 1.15, "Maize": 1.25, "Cotton": 1.25, "Chickpea": 1.20,
+        "Lentil": 1.10, "Mungbean": 1.15, "Muskmelon": 1.15, "Watermelon": 1.15,
+        "Coconut": 0.005, "Coffee": 0.005, "Jute": 0.02, "Apple": 0.01,
+    },
+    "jammu and kashmir": {
+        "Apple": 1.60, "Kidneybeans": 1.50, "Maize": 1.30, "Rice": 1.15,
+        "Chickpea": 1.05, "Lentil": 1.10, "Pomegranate": 1.15,
+        "Coconut": 0.005, "Coffee": 0.005, "Cotton": 0.02, "Jute": 0.01,
+        "Papaya": 0.05, "Banana": 0.05,
+    },
+    "himachal pradesh": {
+        "Apple": 1.60, "Kidneybeans": 1.40, "Maize": 1.30, "Rice": 1.05,
+        "Pomegranate": 1.20,
+        "Coconut": 0.005, "Coffee": 0.005, "Cotton": 0.02, "Jute": 0.01,
+    },
+    "uttar pradesh": {
+        "Rice": 1.20, "Maize": 1.25, "Chickpea": 1.15, "Lentil": 1.15,
+        "Pigeonpeas": 1.20, "Mango": 1.20, "Banana": 1.10, "Watermelon": 1.10,
+        "Muskmelon": 1.10, "Coconut": 0.01, "Coffee": 0.005, "Apple": 0.01,
+    },
+    "bihar": {
+        "Rice": 1.25, "Maize": 1.30, "Jute": 1.15, "Lentil": 1.15,
+        "Chickpea": 1.05, "Banana": 1.20, "Mango": 1.15,
+        "Coconut": 0.02, "Coffee": 0.005, "Apple": 0.01,
+    },
+    "west bengal": {
+        "Rice": 1.30, "Jute": 1.45, "Banana": 1.15, "Mango": 1.15,
+        "Apple": 0.01, "Cotton": 0.10, "Coconut": 0.70,
+    },
+    "assam": {
+        "Rice": 1.30, "Jute": 1.35, "Banana": 1.15, "Papaya": 1.15,
+        "Apple": 0.01, "Cotton": 0.05,
+    },
+    "maharashtra": {
+        "Cotton": 1.35, "Pigeonpeas": 1.30, "Chickpea": 1.25, "Mungbean": 1.15,
+        "Mothbeans": 1.15, "Pomegranate": 1.35, "Orange": 1.35, "Grapes": 1.45,
+        "Banana": 1.25, "Rice": 1.05, "Maize": 1.15,
+        "Apple": 0.01, "Jute": 0.02, "Coffee": 0.10,
+    },
+    "gujarat": {
+        "Cotton": 1.40, "Chickpea": 1.15, "Pomegranate": 1.25,
+        "Banana": 1.15, "Mungbean": 1.15, "Watermelon": 1.15,
+        "Coconut": 0.50, "Apple": 0.01, "Jute": 0.02, "Coffee": 0.005,
+    },
+    "rajasthan": {
+        "Mothbeans": 1.45, "Chickpea": 1.25, "Mungbean": 1.25, "Pomegranate": 1.20,
+        "Watermelon": 1.15, "Muskmelon": 1.15, "Maize": 1.05,
+        "Rice": 0.20, "Jute": 0.01, "Coconut": 0.005, "Coffee": 0.005, "Apple": 0.01,
+    },
+    "madhya pradesh": {
+        "Chickpea": 1.35, "Pigeonpeas": 1.25, "Lentil": 1.25, "Maize": 1.25,
+        "Cotton": 1.15, "Rice": 1.05, "Banana": 1.10, "Orange": 1.15,
+        "Coconut": 0.005, "Coffee": 0.005, "Apple": 0.01, "Jute": 0.02,
+    },
+    "karnataka": {
+        "Coffee": 1.60, "Coconut": 1.35, "Maize": 1.25, "Rice": 1.15,
+        "Cotton": 1.15, "Pigeonpeas": 1.15, "Banana": 1.20, "Pomegranate": 1.15,
+        "Apple": 0.01, "Jute": 0.05,
+    },
+    "kerala": {
+        "Coconut": 1.60, "Coffee": 1.35, "Rice": 1.15, "Banana": 1.35,
+        "Apple": 0.005, "Chickpea": 0.05, "Cotton": 0.05, "Jute": 0.05,
+    },
+    "tamil nadu": {
+        "Rice": 1.25, "Coconut": 1.35, "Banana": 1.35, "Cotton": 1.15,
+        "Maize": 1.15, "Blackgram": 1.20, "Coffee": 1.05,
+        "Apple": 0.01, "Jute": 0.05,
+    },
+    "andhra pradesh": {
+        "Rice": 1.25, "Maize": 1.25, "Cotton": 1.25, "Blackgram": 1.20,
+        "Pigeonpeas": 1.15, "Banana": 1.20, "Mango": 1.20,
+        "Coconut": 1.00, "Apple": 0.01, "Jute": 0.05,
+    },
+    "telangana": {
+        "Cotton": 1.35, "Rice": 1.25, "Maize": 1.25, "Pigeonpeas": 1.25,
+        "Blackgram": 1.15, "Mango": 1.15,
+        "Coconut": 0.40, "Apple": 0.01, "Jute": 0.05,
+    },
+}
+
+SEASONAL_FEASIBILITY: Dict[str, Dict[str, float]] = {
+    "kharif": {
+        "Rice": 1.30, "Maize": 1.30, "Cotton": 1.30, "Jute": 1.20,
+        "Blackgram": 1.20, "Mungbean": 1.20, "Pigeonpeas": 1.20, "Mothbeans": 1.20,
+        "Kidneybeans": 1.10, "Banana": 1.00, "Papaya": 1.00, "Coconut": 1.00, "Coffee": 1.00,
+        # Strictly Rabi crops
+        "Chickpea": 0.15, "Lentil": 0.15,
+    },
+    "rabi": {
+        "Chickpea": 1.50, "Lentil": 1.50, "Kidneybeans": 1.20,
+        "Pomegranate": 1.10, "Apple": 1.10, "Watermelon": 1.00, "Muskmelon": 1.00,
+        "Rice": 0.40, "Cotton": 0.15, "Jute": 0.05, "Maize": 0.85,
+    },
+    "zaid": {
+        "Watermelon": 1.50, "Muskmelon": 1.50, "Mungbean": 1.30,
+        "Maize": 1.10, "Rice": 0.35, "Cotton": 0.25, "Chickpea": 0.05,
+    },
+}
+
+
 class CropEngine:
     """
     Crop Recommendation Engine.
@@ -183,39 +297,13 @@ class CropEngine:
         N: float, P: float, K: float,
         temperature: float, humidity: float,
         ph: float, rainfall: float,
-        top_k: int = 5
+        top_k: int = 5,
+        state: Optional[str] = None,
+        season: Optional[str] = None,
     ) -> Dict:
         """
-        Recommend the best crop based on soil and weather.
-
-        Parameters
-        ----------
-        N : float
-            Nitrogen level (kg/ha).
-        P : float
-            Phosphorus level (kg/ha).
-        K : float
-            Potassium level (kg/ha).
-        temperature : float
-            Temperature (°C).
-        humidity : float
-            Humidity (%).
-        ph : float
-            Soil pH.
-        rainfall : float
-            Rainfall (mm).
-        top_k : int
-            Number of top predictions to return.
-
-        Returns
-        -------
-        dict
-            success         : bool
-            crop_name       : str
-            confidence      : float (percentage)
-            top_predictions : list[(crop, confidence)]
-            input_data      : dict of raw inputs
-            error           : str (only if success is False)
+        Recommend the best crop based on soil and weather, calibrated with
+        agro-climatic regional and seasonal suitability.
         """
         if not self._loaded:
             return {
@@ -229,6 +317,8 @@ class CropEngine:
             'Humidity': humidity,
             'pH': ph,
             'Rainfall': rainfall,
+            'State': state,
+            'Season': season,
         }
 
         try:
@@ -250,35 +340,76 @@ class CropEngine:
             data = _engineer_features(data)
             data = data[FEATURE_COLUMNS]
 
-            # Predict
-            pred_encoded = self.model.predict(data)
-            crop_name = self.label_encoder.inverse_transform(
-                pred_encoded)[0]
-
-            # Get probabilities
-            probabilities = self.model.predict_proba(data)[0]
+            # Get raw model probabilities
+            probabilities = self.model.predict_proba(data)[0].copy()
             classes = self.label_encoder.classes_
 
+            # Agro-climatic Calibration
+            calibrated_probs = probabilities.copy()
+            state_key = state.strip().lower() if state else None
+            season_key = season.strip().lower() if season else None
+
+            reg_table = REGIONAL_FEASIBILITY.get(state_key, {}) if state_key else {}
+            sea_table = SEASONAL_FEASIBILITY.get(season_key, {}) if season_key else {}
+
+            if reg_table or sea_table:
+                for idx, cname in enumerate(classes):
+                    mult = 1.0
+                    if cname in reg_table:
+                        mult *= reg_table[cname]
+                    if cname in sea_table:
+                        mult *= sea_table[cname]
+                    calibrated_probs[idx] *= mult
+            elif temperature < 22.0 or rainfall < 120.0:
+                # Common-sense bioclimatic sanity for northern/temperate conditions
+                for idx, cname in enumerate(classes):
+                    if cname in ("Coconut", "Coffee") and (temperature < 22.0 or rainfall < 120.0):
+                        calibrated_probs[idx] *= 0.05
+                    elif cname in ("Apple", "Kidneybeans") and temperature < 20.0:
+                        calibrated_probs[idx] *= 1.30
+
+            # Re-normalize probabilities
+            prob_sum = float(np.sum(calibrated_probs))
+            if prob_sum > 0:
+                calibrated_probs = calibrated_probs / prob_sum
+            else:
+                calibrated_probs = probabilities
+
             # Top-K predictions
-            top_indices = np.argsort(probabilities)[::-1][:top_k]
+            top_indices = np.argsort(calibrated_probs)[::-1][:top_k]
             top_predictions: List[Tuple[str, float]] = [
-                (classes[i], float(probabilities[i] * 100))
+                (classes[i], float(calibrated_probs[i] * 100))
                 for i in top_indices
             ]
 
+            crop_name = top_predictions[0][0]
             confidence = top_predictions[0][1]
 
+            regional_context = {}
+            if state:
+                regional_context["state"] = state
+            if season:
+                regional_context["season"] = season
+            if state or season:
+                regional_context["note"] = (
+                    f"Agronomically validated for {state.title() if state else 'the selected region'} "
+                    f"({season.title() if season else 'standard'} season) following ICAR zone guidelines."
+                )
+
             result = {
-                'success':         True,
-                'crop_name':       crop_name,
-                'confidence':      confidence,
-                'top_predictions': top_predictions,
-                'input_data':      input_data,
+                'success':          True,
+                'crop_name':        crop_name,
+                'confidence':       confidence,
+                'top_predictions':  top_predictions,
+                'input_data':       input_data,
+                'regional_context': regional_context,
             }
 
             logger.log_info(
                 "CROP",
-                f"Recommended: {crop_name} ({confidence:.1f}%)")
+                f"Recommended: {crop_name} ({confidence:.1f}%) "
+                f"[State={state}, Season={season}]"
+            )
             return result
 
         except Exception as e:

@@ -6,6 +6,7 @@ import { FileText, AlertTriangle, UploadCloud, Map, Droplets, Sprout, TrendingUp
 import { jsPDF } from 'jspdf';
 import { PageHeader, Card, Button, Input, InputGroup, Badge, SectionHeader, Tilt } from '../design-system/components';
 import { pageVariants, pageTransition, fadeInLeft, fadeInRight, slideUp } from '../design-system/animations';
+import { API_BASE } from '../utils/api';
 
 const Report = () => {
   const { t } = useTranslation();
@@ -59,7 +60,7 @@ const Report = () => {
     }
 
     try {
-      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'}/chinar-agro-report`, payload, {
+      const { data } = await axios.post(`${API_BASE}/chinar-agro-report`, payload, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setResult(data.chinar_agro_report);

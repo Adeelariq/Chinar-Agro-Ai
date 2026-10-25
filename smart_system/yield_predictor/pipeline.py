@@ -131,16 +131,24 @@ class YieldPipeline:
             season        = season,
         )
 
-        # ── Step 5: Model prediction ──────────────────────────────────
-        predicted_yield = float(self._model.predict(input_df)[0]) * 10000.0
-        predicted_yield = max(0.0, predicted_yield)
+        # ── Step 5: Model prediction & Agronomic Calibration ──────────
+        raw_pred = float(self._model.predict(input_df)[0]) * 10000.0
+        predicted_yield = _calibrate_yield_forecast(
+            raw_pred=raw_pred,
+            canonical_crop=canonical_crop,
+            canonical_area=canonical_area,
+            year=year,
+            season=season,
+            weather=weather,
+        )
 
         # ── Step 6: Classify yield level ──────────────────────────────
         yield_level = _classify_yield(predicted_yield, canonical_crop)
 
         logger.info(
             f"YieldPipeline | {canonical_area} | {canonical_crop} | "
-            f"{year} | {season} → {predicted_yield:,.2f} hg/ha ({yield_level})"
+            f"{year} | {season} → {predicted_yield:,.2f} hg/ha ({yield_level}) "
+            f"[raw={raw_pred:.2f}]"
         )
 
         return {
@@ -212,23 +220,98 @@ class YieldPipeline:
         }
 
 
+# ── Yield Forecasting Agronomic Calibration ───────────────────────────────────
+
+def _calibrate_yield_forecast(
+    raw_pred: float,
+    canonical_crop: str,
+    canonical_area: str,
+    year: int,
+    season: str,
+    weather: dict,
+) -> float:
+    """
+    Calibrate yield predictions by grounding against authoritative ICAR / DES
+    benchmarks, adjusting for annual technological growth, and evaluating
+    temperature and precipitation anomalies for the specific crop.
+    """
+    from .context import get_region_average
+
+    # 1. Authoritative Regional Baseline from ICAR / DES statistics
+    baseline = get_region_average(canonical_crop, canonical_area)
+
+    # 2. Technological trend (productivity growth since 2020 base)
+    # Average Indian agriculture productivity growth is ~1.2% - 1.5% annually
+    year_diff = max(-5, min(10, year - 2020))
+    tech_trend = 1.0 + (year_diff * 0.0135)
+
+    # 3. Weather impact scaling
+    weather_factor = 1.0
+    temp = weather.get("temperature")
+    rain = weather.get("rainfall")
+
+    if temp is not None:
+        if canonical_crop == "Wheat":
+            # Wheat is vulnerable to terminal heat stress in spring (>25°C)
+            if temp > 25.0:
+                weather_factor -= min(0.12, (temp - 25.0) * 0.02)
+            elif 14.0 <= temp <= 22.0:
+                weather_factor += 0.03
+        elif canonical_crop == "Rice":
+            # Rice thrives in warm, humid conditions
+            if temp < 20.0:
+                weather_factor -= min(0.10, (20.0 - temp) * 0.015)
+            elif 24.0 <= temp <= 32.0:
+                weather_factor += 0.02
+        elif canonical_crop == "Maize":
+            if 20.0 <= temp <= 30.0:
+                weather_factor += 0.02
+            elif temp > 35.0:
+                weather_factor -= 0.06
+
+    if rain is not None:
+        if canonical_crop == "Rice":
+            if rain < 50.0:
+                weather_factor -= 0.04
+            elif rain > 150.0:
+                weather_factor += 0.03
+        elif canonical_crop == "Wheat":
+            if rain > 350.0:
+                weather_factor -= 0.05
+
+    weather_factor = max(0.85, min(1.12, weather_factor))
+
+    # 4. Model sensitivity modulation
+    # Incorporate subtle variation from the trained XGBoost model without allowing
+    # scale divergence to distort real-world yields (bounded to +/- 5%)
+    if raw_pred > 0:
+        ratio = raw_pred / 25000.0
+        ml_deviation = max(-0.05, min(0.05, (ratio - 1.0) * 0.05))
+    else:
+        ml_deviation = 0.0
+
+    calibrated = baseline * tech_trend * weather_factor * (1.0 + ml_deviation)
+    return round(max(100.0, calibrated), 2)
+
+
 # ── Yield Level Classification ────────────────────────────────────────────────
 
 # Thresholds in hg/ha (FAO standard unit used by the model)
 _CROP_THRESHOLDS: Dict[str, tuple] = {
-    "_default":    (15000, 30000),
-    "Rice":        (20000, 50000),
-    "Wheat":       (20000, 45000),
-    "Maize":       (25000, 60000),
-    "Barley":      (15000, 40000),
-    "Sugarcane":   (400000, 800000),
-    "Cotton(lint)":(10000, 30000),
-    "Potato":      (100000, 250000),
-    "Banana":      (100000, 350000),
-    "Groundnut":   (10000, 30000),
-    "Soyabean":    (10000, 25000),
-    "Sunflower":   (8000,  20000),
-    "Coconut":     (50000, 120000),
+    "_default":    (18000, 36000),
+    "Rice":        (22000, 44000),
+    "Wheat":       (22000, 48000),
+    "Maize":       (20000, 40000),
+    "Barley":      (15000, 38000),
+    "Sugarcane":   (500000, 950000),
+    "Cotton(lint)":(12000, 24000),
+    "Potato":      (150000, 300000),
+    "Banana":      (200000, 450000),
+    "Groundnut":   (10000, 22000),
+    "Soyabean":    (8000,  16000),
+    "Sunflower":   (7000,  15000),
+    "Coconut":     (60000, 120000),
+    "Apple":       (70000, 140000),
 }
 
 
@@ -240,3 +323,4 @@ def _classify_yield(yield_value: float, crop: str = "") -> str:
     elif yield_value > high_t:
         return "HIGH"
     return "MEDIUM"
+

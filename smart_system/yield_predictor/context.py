@@ -30,11 +30,11 @@ from typing import Dict, List, Any
 # Sourced from FAO / ICAR published averages for Indian states.
 # Format: { state_lower: { crop: avg_hg_ha } }
 _STATE_BASELINES: Dict[str, Dict[str, float]] = {
-    "punjab":            {"Rice": 38000, "Wheat": 45000, "Maize": 30000,
+    "punjab":            {"Rice": 40500, "Wheat": 48500, "Maize": 34000,
                           "Sugarcane": 750000, "Cotton(lint)": 20000},
-    "haryana":           {"Rice": 32000, "Wheat": 42000, "Maize": 27000,
+    "haryana":           {"Rice": 33500, "Wheat": 43500, "Maize": 28500,
                           "Sugarcane": 700000, "Cotton(lint)": 18000},
-    "uttar pradesh":     {"Rice": 28000, "Wheat": 32000, "Maize": 22000,
+    "uttar pradesh":     {"Rice": 28500, "Wheat": 33000, "Maize": 22500,
                           "Sugarcane": 650000, "Cotton(lint)": 15000},
     "madhya pradesh":    {"Rice": 22000, "Wheat": 25000, "Maize": 20000,
                           "Soyabean": 10000,  "Cotton(lint)": 14000},
@@ -60,9 +60,10 @@ _STATE_BASELINES: Dict[str, Dict[str, float]] = {
     "gujarat":           {"Rice": 18000, "Wheat": 30000, "Cotton(lint)": 22000,
                           "Groundnut": 18000, "Sugarcane": 900000},
     "assam":             {"Rice": 18000, "Jute": 22000, "Tea": 15000},
-    "himachal pradesh":  {"Wheat": 28000, "Maize": 22000, "Potato": 200000,
+    "himachal pradesh":  {"Wheat": 24000, "Maize": 22000, "Potato": 200000,
                           "Apple": 80000},
-    "jammu and kashmir": {"Wheat": 25000, "Maize": 18000, "Rice": 20000},
+    "jammu and kashmir": {"Wheat": 22500, "Maize": 28500, "Rice": 26000,
+                          "Apple": 110000},
 }
 
 # National crop baselines (hg/ha) — fallback when state not in table

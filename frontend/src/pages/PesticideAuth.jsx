@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle, Info, Leaf, Bug, Eye, FileSearch, ChevronDown, ChevronUp, XCircle, Search, Fingerprint, CalendarCheck, Hash, ListChecks, MessageSquare, Trash2 } from 'lucide-react';
+import { API_BASE } from '../utils/api';
 
 export default function PesticideAuth() {
   const [image, setImage] = useState(null);
@@ -45,7 +46,7 @@ export default function PesticideAuth() {
     formData.append('target_disease', targetDisease);
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/verify-pesticide`, {
+      const response = await fetch(`${API_BASE}/verify-pesticide`, {
         method: 'POST',
         body: formData,
       });
